@@ -15,18 +15,44 @@ type State = {
   elo: number;
 };
 
+type UserStats = {
+  total_votes: number;
+  fav_state_name: string | null;
+};
+
 export default function Home() {
   const [states, setStates] = useState<State[]>([]);
   const [pair, setPair] = useState<[State, State] | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
+
+  // Fetch stats for the logged-in user
+  async function fetchUserStats(userId: string) {
+    const { data } = await supabase
+      .from('user_stats')
+      .select('total_votes, fav_state_name')
+      .eq('user_id', userId)
+      .single();
+
+    if (data) {
+      setStats(data);
+    } else {
+      setStats({ total_votes: 0, fav_state_name: null });
+    }
+  }
 
   // Fetch states and check current user session on load
   useEffect(() => {
     async function init() {
       // 1. Get logged-in user
       const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        fetchUserStats(currentUser.id);
+      }
 
       // 2. Fetch states
       const { data } = await supabase.from('states').select('*');
@@ -38,9 +64,15 @@ export default function Home() {
     }
     init();
 
-    // Listen for auth state changes (e.g., when returning from Discord login)
+    // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchUserStats(currentUser.id);
+      } else {
+        setStats(null);
+      }
     });
 
     return () => {
@@ -76,6 +108,7 @@ export default function Home() {
   async function logout() {
     await supabase.auth.signOut();
     setUser(null);
+    setStats(null);
   }
 
   // Cast a vote
@@ -84,6 +117,12 @@ export default function Home() {
 
     // Instantly pick a new pair so UI feels fast
     selectRandomPair(states);
+
+    // Optimistically bump vote count in local state
+    setStats((prev) => ({
+      total_votes: (prev?.total_votes || 0) + 1,
+      fav_state_name: prev?.fav_state_name || winner.name,
+    }));
 
     // Send vote and user info to API route
     await fetch('/api/vote', {
@@ -95,6 +134,9 @@ export default function Home() {
         userId: user.id 
       }),
     });
+
+    // Refresh accurate stats from database
+    fetchUserStats(user.id);
   }
 
   if (loading) {
@@ -122,13 +164,28 @@ export default function Home() {
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-4 mb-8">
-            <p className="text-slate-400">
+          {/* User Bar with Stats */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 mb-8 bg-slate-800 border border-slate-700 px-6 py-3 rounded-xl shadow-md">
+            <p className="text-slate-300">
               Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
             </p>
+
+            <div className="flex items-center gap-4 text-sm border-t sm:border-t-0 sm:border-l border-slate-700 pt-2 sm:pt-0 sm:pl-4">
+              <div>
+                <span className="text-slate-400">Total Votes: </span>
+                <span className="font-bold text-indigo-300">{stats?.total_votes ?? 0}</span>
+              </div>
+              {stats?.fav_state_name && (
+                <div>
+                  <span className="text-slate-400">Favorite State: </span>
+                  <span className="font-bold text-amber-400">{stats.fav_state_name}</span>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={logout}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold py-1 px-3 rounded border border-slate-600 transition cursor-pointer"
+              className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-semibold py-1 px-3 rounded transition cursor-pointer sm:ml-auto"
             >
               Sign Out
             </button>
