@@ -18,7 +18,6 @@ type State = {
 
 type UserStats = {
   total_votes: number;
-  fav_state_name: string | null;
 };
 
 export default function Home() {
@@ -35,14 +34,14 @@ export default function Home() {
   const fetchUserStats = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('user_stats')
-      .select('total_votes, fav_state_name')
+      .select('total_votes')
       .eq('user_id', userId)
       .single();
 
     if (data) {
       setStats(data);
     } else {
-      setStats({ total_votes: 0, fav_state_name: null });
+      setStats({ total_votes: 0 });
     }
   }, []);
 
@@ -84,10 +83,10 @@ export default function Home() {
 
       if (!mounted) return;
 
-      // Only set user and initiate state if the user actually changes
+      setUser(currentUser);
+
       if (currentUserId !== activeUserIdRef.current) {
         activeUserIdRef.current = currentUserId;
-        setUser(currentUser);
 
         if (currentUserId) {
           await fetchUserStats(currentUserId);
@@ -134,9 +133,9 @@ export default function Home() {
 
     setIsSubmitting(true);
 
+    // Optimistic UI update for vote count
     setStats((prev) => ({
       total_votes: (prev?.total_votes || 0) + 1,
-      fav_state_name: prev?.fav_state_name || winner.name,
     }));
 
     if (nextPair) {
@@ -199,6 +198,7 @@ export default function Home() {
         </div>
       ) : (
         <>
+          {/* User Bar */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-8 bg-slate-800 border border-slate-700 px-6 py-3 rounded-xl shadow-md">
             <p className="text-slate-300">
               Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
@@ -209,12 +209,6 @@ export default function Home() {
                 <span className="text-slate-400">Total Votes: </span>
                 <span className="font-bold text-indigo-300">{stats?.total_votes ?? 0} / 1225</span>
               </div>
-              {stats?.fav_state_name && (
-                <div>
-                  <span className="text-slate-400">Favorite State: </span>
-                  <span className="font-bold text-amber-400">{stats.fav_state_name}</span>
-                </div>
-              )}
             </div>
 
             <button
@@ -225,6 +219,7 @@ export default function Home() {
             </button>
           </div>
 
+          {/* Completion Screen */}
           {completed && !pair ? (
             <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
               <div className="text-6xl mb-4">🎉</div>
@@ -233,7 +228,7 @@ export default function Home() {
                 You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>.
               </p>
               <p className="text-slate-400 text-sm mt-4">
-                Your top favorite state: <span className="text-amber-400 font-semibold">{stats?.fav_state_name ?? 'N/A'}</span>
+                Check the <span className="text-indigo-400 font-semibold">My Rankings</span> drawer on the right to see your full Elo standings!
               </p>
             </div>
           ) : (
