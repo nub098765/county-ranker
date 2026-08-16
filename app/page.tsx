@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import PersonalRankingsDrawer from './components/PersonalRankingsDrawer';
 
@@ -28,9 +28,11 @@ export default function Home() {
   const [completed, setCompleted] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch stats for the logged-in user
-  async function fetchUserStats(userId: string) {
+  const activeUserIdRef = useRef<string | null>(null);
+
+  const fetchUserStats = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('user_stats')
       .select('total_votes, fav_state_name')
@@ -42,10 +44,9 @@ export default function Home() {
     } else {
       setStats({ total_votes: 0, fav_state_name: null });
     }
-  }
+  }, []);
 
-  // Fetch a single unvoted pair from Supabase
-  async function getSingleUnvotedPair(userId: string): Promise<[State, State] | null> {
+  const getSingleUnvotedPair = useCallback(async (userId: string): Promise<[State, State] | null> => {
     const { data, error } = await supabase.rpc('get_unvoted_pair', {
       current_user_id: userId,
     });
@@ -57,10 +58,9 @@ export default function Home() {
       { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
       { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
     ];
-  }
+  }, []);
 
-  // Load current pair AND pre-fetch next pair
-  async function initPairs(userId: string) {
+  const initPairs = useCallback(async (userId: string) => {
     const first = await getSingleUnvotedPair(userId);
     if (!first) {
       setCompleted(true);
@@ -69,16 +69,14 @@ export default function Home() {
     }
     setPair(first);
 
-    // Pre-fetch second pair in background
     const second = await getSingleUnvotedPair(userId);
     if (second) {
       setNextPair(second);
     }
-  }
+  }, [getSingleUnvotedPair]);
 
   useEffect(() => {
     let mounted = true;
-    let lastUserId: string | null = null;
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
@@ -88,9 +86,8 @@ export default function Home() {
 
       setUser(currentUser);
 
-      // Prevent infinite loop by checking if user actually changed
-      if (currentUserId !== lastUserId) {
-        lastUserId = currentUserId;
+      if (currentUserId !== activeUserIdRef.current) {
+        activeUserIdRef.current = currentUserId;
 
         if (currentUserId) {
           await fetchUserStats(currentUserId);
@@ -110,7 +107,7 @@ export default function Home() {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchUserStats, initPairs]);
 
   async function loginWithDiscord() {
     await supabase.auth.signInWithOAuth({
@@ -124,6 +121,7 @@ export default function Home() {
 
   async function logout() {
     await supabase.auth.signOut();
+    activeUserIdRef.current = null;
     setUser(null);
     setStats(null);
     setPair(null);
@@ -132,15 +130,16 @@ export default function Home() {
   }
 
   async function handleVote(winner: State, loser: State) {
-    if (!user || !pair) return;
+    if (!user || !pair || isSubmitting) return;
 
-    // 1. INSTANT UI UPDATE
+    setIsSubmitting(true);
+
+    // Optimistic UI update
     setStats((prev) => ({
       total_votes: (prev?.total_votes || 0) + 1,
       fav_state_name: prev?.fav_state_name || winner.name,
     }));
 
-    // Swap to prefetched pair immediately
     if (nextPair) {
       setPair(nextPair);
       setNextPair(null);
@@ -148,8 +147,7 @@ export default function Home() {
       setPair(null);
     }
 
-    // 2. BACKGROUND WORK
-    (async () => {
+    try {
       await fetch('/api/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,7 +158,6 @@ export default function Home() {
         }),
       });
 
-      // Pre-fetch upcoming pair
       const upcomingPair = await getSingleUnvotedPair(user.id);
       if (upcomingPair) {
         setNextPair(upcomingPair);
@@ -169,8 +166,12 @@ export default function Home() {
         setCompleted(true);
       }
 
-      fetchUserStats(user.id);
-    })();
+      await fetchUserStats(user.id);
+    } catch (err) {
+      console.error('Vote submission error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   if (loading) {
@@ -183,7 +184,6 @@ export default function Home() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center p-6 bg-slate-900 text-white overflow-x-hidden">
-      {/* Slide-out Personal Rankings Drawer */}
       {user && <PersonalRankingsDrawer />}
 
       <h1 className="text-3xl font-extrabold mb-2 text-center">Which State Has Better County Borders?</h1>
@@ -200,7 +200,6 @@ export default function Home() {
         </div>
       ) : (
         <>
-          {/* User Bar with Stats */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-8 bg-slate-800 border border-slate-700 px-6 py-3 rounded-xl shadow-md">
             <p className="text-slate-300">
               Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
@@ -227,7 +226,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Completion Screen */}
           {completed && !pair ? (
             <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
               <div className="text-6xl mb-4">🎉</div>
@@ -247,14 +245,17 @@ export default function Home() {
                   return (
                     <button
                       key={state.id}
+                      disabled={isSubmitting}
                       onClick={() => handleVote(state, opponent)}
-                      className="flex flex-col items-center bg-slate-100 hover:bg-white text-slate-900 border-2 border-slate-300 hover:border-indigo-500 rounded-xl p-6 transition transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
+                      className="flex flex-col items-center bg-slate-100 hover:bg-white disabled:opacity-50 text-slate-900 border-2 border-slate-300 hover:border-indigo-500 rounded-xl p-6 transition transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
                     >
                       <div className="relative w-full h-64 mb-4 flex items-center justify-center p-2">
                         {/* eslint-disable-next-next/no-img-element */}
                         <img
                           src={state.image_url}
                           alt={state.name}
+                          loading="eager"
+                          decoding="async"
                           className="max-h-full max-w-full object-contain"
                         />
                       </div>
@@ -270,3 +271,4 @@ export default function Home() {
     </main>
   );
 }
+
