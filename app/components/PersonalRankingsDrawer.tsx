@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
+// Instantiated ONCE at module level to prevent infinite memory leaks
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 interface PersonalRating {
   elo: number;
   wins: number;
@@ -18,11 +24,6 @@ export default function PersonalRankingsDrawer() {
   const [rankings, setRankings] = useState<PersonalRating[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const fetchPersonalRankings = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -32,7 +33,6 @@ export default function PersonalRankingsDrawer() {
       return;
     }
 
-    // Join user_state_ratings with the states table to fetch state names
     const { data, error } = await supabase
       .from('user_state_ratings')
       .select('elo, wins, losses, state_id, states(id, name)')
@@ -125,7 +125,9 @@ export default function PersonalRankingsDrawer() {
               {/* Personal Winners (Top 3) */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2 flex items-center justify-between">
-                  <span>Your Top Favorites</span>                </h3>
+                  <span>Your Top Favorites</span>
+                  <span className="text-slate-500 text-[10px]">Rank #1 - #3</span>
+                </h3>
                 <div className="space-y-2">
                   {top3.map((item, idx) => (
                     <div
@@ -156,7 +158,9 @@ export default function PersonalRankingsDrawer() {
               {/* Personal Losers (Bottom 3) */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-2 flex items-center justify-between">
-                  <span>Your Least Favorites</span>                </h3>
+                  <span>Your Least Favorites</span>
+                  <span className="text-slate-500 text-[10px]">Bottom 3</span>
+                </h3>
                 <div className="space-y-2">
                   {bottom3.map((item, idx) => (
                     <div

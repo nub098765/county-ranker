@@ -84,10 +84,10 @@ export default function Home() {
 
       if (!mounted) return;
 
-      setUser(currentUser);
-
+      // Only set user and initiate state if the user actually changes
       if (currentUserId !== activeUserIdRef.current) {
         activeUserIdRef.current = currentUserId;
+        setUser(currentUser);
 
         if (currentUserId) {
           await fetchUserStats(currentUserId);
@@ -134,7 +134,6 @@ export default function Home() {
 
     setIsSubmitting(true);
 
-    // Optimistic UI update
     setStats((prev) => ({
       total_votes: (prev?.total_votes || 0) + 1,
       fav_state_name: prev?.fav_state_name || winner.name,
@@ -271,4 +270,3 @@ export default function Home() {
     </main>
   );
 }
-
