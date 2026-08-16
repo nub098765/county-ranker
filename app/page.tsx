@@ -22,6 +22,7 @@ type UserStats = {
 
 export default function Home() {
   const [pair, setPair] = useState<[State, State] | null>(null);
+  const [nextPair, setNextPair] = useState<[State, State] | null>(null);
   const [loading, setLoading] = useState(true);
   const [completed, setCompleted] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -42,22 +43,35 @@ export default function Home() {
     }
   }
 
-  // Fetch the next random unvoted pair from Supabase
-  async function fetchNextPair(userId: string) {
+  // Fetch a single unvoted pair from Supabase
+  async function getSingleUnvotedPair(userId: string): Promise<[State, State] | null> {
     const { data, error } = await supabase.rpc('get_unvoted_pair', {
       current_user_id: userId,
     });
 
-    if (error || !data || data.length === 0) {
+    if (error || !data || data.length === 0) return null;
+
+    const row = data[0];
+    return [
+      { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
+      { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
+    ];
+  }
+
+  // Load current pair AND pre-fetch next pair
+  async function initPairs(userId: string) {
+    const first = await getSingleUnvotedPair(userId);
+    if (!first) {
       setCompleted(true);
       setPair(null);
-    } else {
-      const row = data[0];
-      setPair([
-        { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
-        { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
-      ]);
-      setCompleted(false);
+      return;
+    }
+    setPair(first);
+
+    // Pre-fetch second pair in background
+    const second = await getSingleUnvotedPair(userId);
+    if (second) {
+      setNextPair(second);
     }
   }
 
@@ -69,7 +83,7 @@ export default function Home() {
 
       if (currentUser) {
         await fetchUserStats(currentUser.id);
-        await fetchNextPair(currentUser.id);
+        await initPairs(currentUser.id);
       }
       setLoading(false);
     }
@@ -80,10 +94,11 @@ export default function Home() {
       setUser(currentUser);
       if (currentUser) {
         await fetchUserStats(currentUser.id);
-        await fetchNextPair(currentUser.id);
+        await initPairs(currentUser.id);
       } else {
         setStats(null);
         setPair(null);
+        setNextPair(null);
         setCompleted(false);
       }
     });
@@ -108,26 +123,50 @@ export default function Home() {
     setUser(null);
     setStats(null);
     setPair(null);
+    setNextPair(null);
     setCompleted(false);
   }
 
   async function handleVote(winner: State, loser: State) {
-    if (!user) return;
+    if (!user || !pair) return;
 
-    // Send vote to API route
-    await fetch('/api/vote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        winnerId: winner.id, 
-        loserId: loser.id,
-        userId: user.id 
-      }),
-    });
+    // 1. INSTANT UI UPDATE (0ms delay)
+    setStats((prev) => ({
+      total_votes: (prev?.total_votes || 0) + 1,
+      fav_state_name: prev?.fav_state_name || winner.name,
+    }));
 
-    // Refresh user stats and load next unvoted pair
-    await fetchUserStats(user.id);
-    await fetchNextPair(user.id);
+    // Swap to prefetched pair immediately
+    if (nextPair) {
+      setPair(nextPair);
+      setNextPair(null);
+    } else {
+      setPair(null);
+    }
+
+    // 2. BACKGROUND WORK (Does not block UI)
+    (async () => {
+      await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          winnerId: winner.id, 
+          loserId: loser.id,
+          userId: user.id 
+        }),
+      });
+
+      // Pre-fetch the upcoming pair into nextPair
+      const upcomingPair = await getSingleUnvotedPair(user.id);
+      if (upcomingPair) {
+        setNextPair(upcomingPair);
+        setPair((curr) => curr ?? upcomingPair);
+      } else if (!nextPair) {
+        setCompleted(true);
+      }
+
+      fetchUserStats(user.id);
+    })();
   }
 
   if (loading) {
@@ -182,7 +221,7 @@ export default function Home() {
           </div>
 
           {/* Completion Screen */}
-          {completed ? (
+          {completed && !pair ? (
             <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
               <div className="text-6xl mb-4">🎉</div>
               <h2 className="text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
