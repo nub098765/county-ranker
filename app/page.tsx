@@ -67,8 +67,15 @@ export default function Home() {
       provider: 'discord',
       options: {
         redirectTo: `${window.location.origin}`,
+        scopes: 'identify',
       },
     });
+  }
+
+  // Logout Helper
+  async function logout() {
+    await supabase.auth.signOut();
+    setUser(null);
   }
 
   // Cast a vote
@@ -115,9 +122,17 @@ export default function Home() {
         </div>
       ) : (
         <>
-          <p className="text-slate-400 mb-8 text-center">
-            Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
-          </p>
+          <div className="flex items-center gap-4 mb-8">
+            <p className="text-slate-400">
+              Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
+            </p>
+            <button
+              onClick={logout}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold py-1 px-3 rounded border border-slate-600 transition cursor-pointer"
+            >
+              Sign Out
+            </button>
+          </div>
 
           {pair && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
