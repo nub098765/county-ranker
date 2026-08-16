@@ -10,7 +10,6 @@ interface PersonalRating {
   states: {
     id: string;
     name: string;
-    flag_url?: string;
   };
 }
 
@@ -33,26 +32,28 @@ export default function PersonalRankingsDrawer() {
       return;
     }
 
-    // Query flexible columns directly to prevent relation query failures
+    // Join user_state_ratings with the states table to fetch state names
     const { data, error } = await supabase
       .from('user_state_ratings')
-      .select('*')
+      .select('elo, wins, losses, state_id, states(id, name)')
       .eq('user_id', user.id)
       .order('elo', { ascending: false });
 
     if (error) {
       console.error('Error fetching personal rankings:', error);
     } else if (data) {
-      // Safely map rows regardless of exact column naming conventions
-      const mapped = data.map((row: any) => ({
-        elo: Math.round(row.elo ?? 1000),
-        wins: row.wins ?? 0,
-        losses: row.losses ?? 0,
-        states: {
-          id: row.state_id ?? row.id ?? `state-${Math.random()}`,
-          name: row.state_name ?? row.name ?? row.states?.name ?? 'State',
-        },
-      }));
+      const mapped = data.map((row: any) => {
+        const stateObj = Array.isArray(row.states) ? row.states[0] : row.states;
+        return {
+          elo: Math.round(row.elo ?? 1000),
+          wins: row.wins ?? 0,
+          losses: row.losses ?? 0,
+          states: {
+            id: stateObj?.id ?? row.state_id ?? `state-${Math.random()}`,
+            name: stateObj?.name ?? row.state_name ?? row.name ?? 'Unknown State',
+          },
+        };
+      });
       setRankings(mapped);
     }
     setLoading(false);
@@ -155,9 +156,7 @@ export default function PersonalRankingsDrawer() {
               {/* Personal Losers (Bottom 3) */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-2 flex items-center justify-between">
-                  <span>Your Least Favorites</span>
-                  <span className="text-slate-500 text-[10px]">Bottom 3</span>
-                </h3>
+                  <span>Your Least Favorites</span>                </h3>
                 <div className="space-y-2">
                   {bottom3.map((item, idx) => (
                     <div
