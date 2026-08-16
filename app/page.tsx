@@ -77,34 +77,37 @@ export default function Home() {
   }
 
   useEffect(() => {
-    async function init() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await fetchUserStats(currentUser.id);
-        await initPairs(currentUser.id);
-      }
-      setLoading(false);
-    }
-    init();
+    let mounted = true;
+    let lastUserId: string | null = null;
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
+      const currentUserId = currentUser?.id ?? null;
+
+      if (!mounted) return;
+
       setUser(currentUser);
-      if (currentUser) {
-        await fetchUserStats(currentUser.id);
-        await initPairs(currentUser.id);
-      } else {
-        setStats(null);
-        setPair(null);
-        setNextPair(null);
-        setCompleted(false);
+
+      // Prevent infinite loop by checking if user actually changed
+      if (currentUserId !== lastUserId) {
+        lastUserId = currentUserId;
+
+        if (currentUserId) {
+          await fetchUserStats(currentUserId);
+          await initPairs(currentUserId);
+        } else {
+          setStats(null);
+          setPair(null);
+          setNextPair(null);
+          setCompleted(false);
+        }
       }
+
+      setLoading(false);
     });
 
     return () => {
+      mounted = false;
       authListener.subscription.unsubscribe();
     };
   }, []);
@@ -131,7 +134,7 @@ export default function Home() {
   async function handleVote(winner: State, loser: State) {
     if (!user || !pair) return;
 
-    // 1. INSTANT UI UPDATE (0ms delay)
+    // 1. INSTANT UI UPDATE
     setStats((prev) => ({
       total_votes: (prev?.total_votes || 0) + 1,
       fav_state_name: prev?.fav_state_name || winner.name,
@@ -145,7 +148,7 @@ export default function Home() {
       setPair(null);
     }
 
-    // 2. BACKGROUND WORK (Does not block UI)
+    // 2. BACKGROUND WORK
     (async () => {
       await fetch('/api/vote', {
         method: 'POST',
@@ -157,7 +160,7 @@ export default function Home() {
         }),
       });
 
-      // Pre-fetch the upcoming pair into nextPair
+      // Pre-fetch upcoming pair
       const upcomingPair = await getSingleUnvotedPair(user.id);
       if (upcomingPair) {
         setNextPair(upcomingPair);
