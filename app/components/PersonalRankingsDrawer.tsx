@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Instantiated ONCE at module level to prevent infinite memory leaks
+// Single client instance declared OUTSIDE component body to prevent memory leaks
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -122,12 +122,10 @@ export default function PersonalRankingsDrawer() {
             </div>
           ) : (
             <>
-              {/* Personal Winners (Top 3) */}
+              {/* Top 3 */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2 flex items-center justify-between">
-                  <span>Your Top Favorites</span>
-                  <span className="text-slate-500 text-[10px]">Rank #1 - #3</span>
-                </h3>
+                  <span>Your Top Favorites</span>                </h3>
                 <div className="space-y-2">
                   {top3.map((item, idx) => (
                     <div
@@ -155,12 +153,10 @@ export default function PersonalRankingsDrawer() {
                 </div>
               </div>
 
-              {/* Personal Losers (Bottom 3) */}
+              {/* Bottom 3 */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-2 flex items-center justify-between">
-                  <span>Your Least Favorites</span>
-                  <span className="text-slate-500 text-[10px]">Bottom 3</span>
-                </h3>
+                  <span>Your Least Favorites</span>                </h3>
                 <div className="space-y-2">
                   {bottom3.map((item, idx) => (
                     <div
@@ -188,7 +184,7 @@ export default function PersonalRankingsDrawer() {
                 </div>
               </div>
 
-              {/* Complete List Table */}
+              {/* Full Standings */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
                   Full Standings ({rankings.length}/50 Seen)
