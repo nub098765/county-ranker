@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import PersonalRankingsDrawer from './components/PersonalRankingsDrawer';
 
@@ -31,7 +31,7 @@ export default function Home() {
 
   const activeUserIdRef = useRef<string | null>(null);
 
-  const fetchUserStats = useCallback(async (userId: string) => {
+  async function fetchUserStats(userId: string) {
     const { data } = await supabase
       .from('user_stats')
       .select('total_votes')
@@ -43,9 +43,9 @@ export default function Home() {
     } else {
       setStats({ total_votes: 0 });
     }
-  }, []);
+  }
 
-  const getSingleUnvotedPair = useCallback(async (userId: string): Promise<[State, State] | null> => {
+  async function getSingleUnvotedPair(userId: string): Promise<[State, State] | null> {
     const { data, error } = await supabase.rpc('get_unvoted_pair', {
       current_user_id: userId,
     });
@@ -57,9 +57,9 @@ export default function Home() {
       { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
       { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
     ];
-  }, []);
+  }
 
-  const initPairs = useCallback(async (userId: string) => {
+  async function initPairs(userId: string) {
     const first = await getSingleUnvotedPair(userId);
     if (!first) {
       setCompleted(true);
@@ -72,7 +72,7 @@ export default function Home() {
     if (second) {
       setNextPair(second);
     }
-  }, [getSingleUnvotedPair]);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -106,7 +106,7 @@ export default function Home() {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [fetchUserStats, initPairs]);
+  }, []);
 
   async function loginWithDiscord() {
     await supabase.auth.signInWithOAuth({
@@ -133,7 +133,6 @@ export default function Home() {
 
     setIsSubmitting(true);
 
-    // Optimistic UI update for vote count
     setStats((prev) => ({
       total_votes: (prev?.total_votes || 0) + 1,
     }));
@@ -198,7 +197,6 @@ export default function Home() {
         </div>
       ) : (
         <>
-          {/* User Bar */}
           <div className="flex flex-col sm:flex-row items-center gap-4 mb-8 bg-slate-800 border border-slate-700 px-6 py-3 rounded-xl shadow-md">
             <p className="text-slate-300">
               Logged in as <span className="text-indigo-400 font-semibold">{user.user_metadata?.full_name || user.email}</span>
@@ -219,7 +217,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Completion Screen */}
           {completed && !pair ? (
             <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
               <div className="text-6xl mb-4">🎉</div>
