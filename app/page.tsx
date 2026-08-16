@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import PersonalRankingsDrawer from './components/PersonalRankingsDrawer';
+import FullRankingsView from './components/FullRankingsView';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -181,7 +182,8 @@ export default function Home() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center p-6 bg-slate-900 text-white overflow-x-hidden">
-      {user && <PersonalRankingsDrawer />}
+      {/* Drawer is hidden once all 1,225 votes are complete */}
+      {user && !completed && <PersonalRankingsDrawer />}
 
       <h1 className="text-3xl font-extrabold mb-2 text-center">Which State Has Better County Borders?</h1>
       
@@ -217,17 +219,9 @@ export default function Home() {
             </button>
           </div>
 
+          {/* Full Stats View on Completion */}
           {completed && !pair ? (
-            <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
-              <div className="text-6xl mb-4">🎉</div>
-              <h2 className="text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
-              <p className="text-slate-300 text-lg">
-                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>.
-              </p>
-              <p className="text-slate-400 text-sm mt-4">
-                Check the <span className="text-indigo-400 font-semibold">My Rankings</span> drawer on the right to see your full Elo standings!
-              </p>
-            </div>
+            <FullRankingsView userId={user.id} />
           ) : (
             pair && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
