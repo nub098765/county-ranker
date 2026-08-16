@@ -201,13 +201,16 @@ export default function Home() {
                     onClick={() => handleVote(state, opponent)}
                     className="flex flex-col items-center bg-slate-800 border-2 border-slate-700 hover:border-indigo-500 rounded-xl p-6 transition transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
                   >
-                    <div className="relative w-full h-64 mb-4 flex items-center justify-center bg-slate-950 rounded-lg p-2">
-                      {/* eslint-disable-next-next/no-img-element */}
-                      <img
-                        src={state.image_url}
-                        alt={state.name}
-                        className="max-h-full max-w-full object-contain"
-                      />
+                    {/* Outer Frame with Light Inner Backdrop for Transparent PNGs */}
+                    <div className="relative w-full h-64 mb-4 flex items-center justify-center bg-slate-950 border border-slate-800 rounded-lg p-2">
+                      <div className="w-full h-full flex items-center justify-center bg-slate-100 rounded-md p-3">
+                        {/* eslint-disable-next-next/no-img-element */}
+                        <img
+                          src={state.image_url}
+                          alt={state.name}
+                          className="max-h-full max-w-full object-contain filter drop-shadow-sm"
+                        />
+                      </div>
                     </div>
                     <span className="text-2xl font-bold">{state.name}</span>
                   </button>
