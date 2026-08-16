@@ -124,9 +124,7 @@ export default function PersonalRankingsDrawer() {
               {/* Personal Winners (Top 3) */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2 flex items-center justify-between">
-                  <span>Your Top Favorites</span>
-                  <span className="text-slate-500 text-[10px]">Rank #1 - #3</span>
-                </h3>
+                  <span>Your Top Favorites</span>                </h3>
                 <div className="space-y-2">
                   {top3.map((item, idx) => (
                     <div
