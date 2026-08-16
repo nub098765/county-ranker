@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import PersonalRankingsDrawer from './components/PersonalRankingsDrawer';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -178,7 +179,10 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-900 text-white">
+    <main className="relative flex min-h-screen flex-col items-center justify-center p-6 bg-slate-900 text-white overflow-x-hidden">
+      {/* Slide-out Personal Rankings Drawer */}
+      {user && <PersonalRankingsDrawer />}
+
       <h1 className="text-3xl font-extrabold mb-2 text-center">Which State Has Better County Borders?</h1>
       
       {!user ? (
