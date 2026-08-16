@@ -21,9 +21,9 @@ type UserStats = {
 };
 
 export default function Home() {
-  const [states, setStates] = useState<State[]>([]);
   const [pair, setPair] = useState<[State, State] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [completed, setCompleted] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
 
@@ -42,36 +42,49 @@ export default function Home() {
     }
   }
 
-  // Fetch states and check current user session on load
+  // Fetch the next random unvoted pair from Supabase
+  async function fetchNextPair(userId: string) {
+    const { data, error } = await supabase.rpc('get_unvoted_pair', {
+      current_user_id: userId,
+    });
+
+    if (error || !data || data.length === 0) {
+      setCompleted(true);
+      setPair(null);
+    } else {
+      const row = data[0];
+      setPair([
+        { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
+        { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
+      ]);
+      setCompleted(false);
+    }
+  }
+
   useEffect(() => {
     async function init() {
-      // 1. Get logged-in user
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
       if (currentUser) {
-        fetchUserStats(currentUser.id);
-      }
-
-      // 2. Fetch states
-      const { data } = await supabase.from('states').select('*');
-      if (data) {
-        setStates(data);
-        selectRandomPair(data);
+        await fetchUserStats(currentUser.id);
+        await fetchNextPair(currentUser.id);
       }
       setLoading(false);
     }
     init();
 
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        fetchUserStats(currentUser.id);
+        await fetchUserStats(currentUser.id);
+        await fetchNextPair(currentUser.id);
       } else {
         setStats(null);
+        setPair(null);
+        setCompleted(false);
       }
     });
 
@@ -80,20 +93,6 @@ export default function Home() {
     };
   }, []);
 
-  // Pick two distinct random states
-  function selectRandomPair(allStates: State[]) {
-    if (allStates.length < 2) return;
-    const firstIndex = Math.floor(Math.random() * allStates.length);
-    let secondIndex = Math.floor(Math.random() * allStates.length);
-    
-    while (secondIndex === firstIndex) {
-      secondIndex = Math.floor(Math.random() * allStates.length);
-    }
-
-    setPair([allStates[firstIndex], allStates[secondIndex]]);
-  }
-
-  // Discord Login Helper
   async function loginWithDiscord() {
     await supabase.auth.signInWithOAuth({
       provider: 'discord',
@@ -104,27 +103,18 @@ export default function Home() {
     });
   }
 
-  // Logout Helper
   async function logout() {
     await supabase.auth.signOut();
     setUser(null);
     setStats(null);
+    setPair(null);
+    setCompleted(false);
   }
 
-  // Cast a vote
   async function handleVote(winner: State, loser: State) {
-    if (!user) return; // Prevent voting if not logged in
+    if (!user) return;
 
-    // Instantly pick a new pair so UI feels fast
-    selectRandomPair(states);
-
-    // Optimistically bump vote count in local state
-    setStats((prev) => ({
-      total_votes: (prev?.total_votes || 0) + 1,
-      fav_state_name: prev?.fav_state_name || winner.name,
-    }));
-
-    // Send vote and user info to API route
+    // Send vote to API route
     await fetch('/api/vote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -135,8 +125,9 @@ export default function Home() {
       }),
     });
 
-    // Refresh accurate stats from database
-    fetchUserStats(user.id);
+    // Refresh user stats and load next unvoted pair
+    await fetchUserStats(user.id);
+    await fetchNextPair(user.id);
   }
 
   if (loading) {
@@ -151,7 +142,6 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-900 text-white">
       <h1 className="text-3xl font-extrabold mb-2 text-center">Which State Has Better County Borders?</h1>
       
-      {/* Show Discord user info or Login button */}
       {!user ? (
         <div className="flex flex-col items-center gap-4 my-8">
           <p className="text-slate-400 text-center">Please sign in with Discord to vote!</p>
@@ -173,7 +163,7 @@ export default function Home() {
             <div className="flex items-center gap-4 text-sm border-t sm:border-t-0 sm:border-l border-slate-700 pt-2 sm:pt-0 sm:pl-4">
               <div>
                 <span className="text-slate-400">Total Votes: </span>
-                <span className="font-bold text-indigo-300">{stats?.total_votes ?? 0}</span>
+                <span className="font-bold text-indigo-300">{stats?.total_votes ?? 0} / 1225</span>
               </div>
               {stats?.fav_state_name && (
                 <div>
@@ -191,29 +181,43 @@ export default function Home() {
             </button>
           </div>
 
-          {pair && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-              {pair.map((state, idx) => {
-                const opponent = pair[idx === 0 ? 1 : 0];
-                return (
-                  <button
-                    key={state.id}
-                    onClick={() => handleVote(state, opponent)}
-                    className="flex flex-col items-center bg-slate-100 hover:bg-white text-slate-900 border-2 border-slate-300 hover:border-indigo-500 rounded-xl p-6 transition transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
-                  >
-                    <div className="relative w-full h-64 mb-4 flex items-center justify-center p-2">
-                      {/* eslint-disable-next-next/no-img-element */}
-                      <img
-                        src={state.image_url}
-                        alt={state.name}
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </div>
-                    <span className="text-2xl font-bold text-slate-900">{state.name}</span>
-                  </button>
-                );
-              })}
+          {/* Completion Screen */}
+          {completed ? (
+            <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
+              <div className="text-6xl mb-4">🎉</div>
+              <h2 className="text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
+              <p className="text-slate-300 text-lg">
+                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>.
+              </p>
+              <p className="text-slate-400 text-sm mt-4">
+                Your top favorite state: <span className="text-amber-400 font-semibold">{stats?.fav_state_name ?? 'N/A'}</span>
+              </p>
             </div>
+          ) : (
+            pair && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+                {pair.map((state, idx) => {
+                  const opponent = pair[idx === 0 ? 1 : 0];
+                  return (
+                    <button
+                      key={state.id}
+                      onClick={() => handleVote(state, opponent)}
+                      className="flex flex-col items-center bg-slate-100 hover:bg-white text-slate-900 border-2 border-slate-300 hover:border-indigo-500 rounded-xl p-6 transition transform hover:-translate-y-1 hover:shadow-xl cursor-pointer"
+                    >
+                      <div className="relative w-full h-64 mb-4 flex items-center justify-center p-2">
+                        {/* eslint-disable-next-next/no-img-element */}
+                        <img
+                          src={state.image_url}
+                          alt={state.name}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                      <span className="text-2xl font-bold text-slate-900">{state.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )
           )}
         </>
       )}
