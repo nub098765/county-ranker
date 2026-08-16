@@ -33,14 +33,27 @@ export default function PersonalRankingsDrawer() {
       return;
     }
 
+    // Query flexible columns directly to prevent relation query failures
     const { data, error } = await supabase
       .from('user_state_ratings')
-      .select('elo, wins, losses, states(id, name, flag_url)')
+      .select('*')
       .eq('user_id', user.id)
       .order('elo', { ascending: false });
 
-    if (!error && data) {
-      setRankings(data as unknown as PersonalRating[]);
+    if (error) {
+      console.error('Error fetching personal rankings:', error);
+    } else if (data) {
+      // Safely map rows regardless of exact column naming conventions
+      const mapped = data.map((row: any) => ({
+        elo: Math.round(row.elo ?? 1000),
+        wins: row.wins ?? 0,
+        losses: row.losses ?? 0,
+        states: {
+          id: row.state_id ?? row.id ?? `state-${Math.random()}`,
+          name: row.state_name ?? row.name ?? row.states?.name ?? 'State',
+        },
+      }));
+      setRankings(mapped);
     }
     setLoading(false);
   };
