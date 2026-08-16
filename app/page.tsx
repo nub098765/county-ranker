@@ -65,7 +65,9 @@ export default function Home() {
   async function loginWithDiscord() {
     await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      redirectTo: `${window.location.origin}`,
+      options: {
+        redirectTo: `${window.location.origin}`,
+      },
     });
   }
 
@@ -89,7 +91,11 @@ export default function Home() {
   }
 
   if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-xl font-bold bg-slate-900 text-white">Loading state maps...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-xl font-bold bg-slate-900 text-white">
+        Loading state maps...
+      </div>
+    );
   }
 
   return (
