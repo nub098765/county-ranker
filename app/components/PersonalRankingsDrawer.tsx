@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { X, Trophy, AlertCircle, ChevronRight } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
 interface PersonalRating {
   elo: number;
@@ -19,7 +18,11 @@ export default function PersonalRankingsDrawer() {
   const [isOpen, setIsOpen] = useState(false);
   const [rankings, setRankings] = useState<PersonalRating[]>([]);
   const [loading, setLoading] = useState(false);
-  const supabase = createClientComponentClient();
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const fetchPersonalRankings = async () => {
     setLoading(true);
@@ -37,13 +40,11 @@ export default function PersonalRankingsDrawer() {
       .order('elo', { ascending: false });
 
     if (!error && data) {
-      // Cast the joined state object properly
       setRankings(data as unknown as PersonalRating[]);
     }
     setLoading(false);
   };
 
-  // Fetch rankings whenever the drawer opens
   useEffect(() => {
     if (isOpen) {
       fetchPersonalRankings();
@@ -55,15 +56,15 @@ export default function PersonalRankingsDrawer() {
 
   return (
     <>
-      {/* Trigger Button (Fixed on the right side of the screen) */}
+      {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed top-1/2 right-0 -translate-y-1/2 z-40 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-4 rounded-l-xl shadow-lg transition-all duration-200 flex items-center gap-1 group"
+        className="fixed top-1/2 right-0 -translate-y-1/2 z-40 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-4 rounded-l-xl shadow-lg transition-all duration-200 flex items-center gap-1 group cursor-pointer"
       >
         <span className="[writing-mode:vertical-rl] font-semibold tracking-wider text-xs uppercase rotate-180">
           My Rankings
         </span>
-        <ChevronRight className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+        <span className="text-xs transition-transform group-hover:-translate-x-1">◀</span>
       </button>
 
       {/* Backdrop */}
@@ -83,13 +84,13 @@ export default function PersonalRankingsDrawer() {
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
           <h2 className="font-bold text-lg text-indigo-400 flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400" /> My Personal Rankings
+            <span className="text-base">🏆</span> My Personal Rankings
           </h2>
           <button
             onClick={() => setIsOpen(false)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <span className="text-sm font-bold">✕</span>
           </button>
         </div>
 
@@ -101,7 +102,7 @@ export default function PersonalRankingsDrawer() {
             </div>
           ) : rankings.length === 0 ? (
             <div className="text-center py-12 text-slate-400 space-y-2">
-              <AlertCircle className="w-8 h-8 mx-auto text-slate-500" />
+              <span className="text-2xl block mx-auto">⚠️</span>
               <p className="font-medium">No votes recorded yet!</p>
               <p className="text-xs text-slate-500">Vote on some matchups to build your personal ranking.</p>
             </div>
