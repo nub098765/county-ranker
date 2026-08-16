@@ -3,61 +3,65 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Calculate new Elo rating
-function getNewElos(winnerElo: number, loserElo: number) {
-  const K = 32;
-  const expectedWinner = 1 / (1 + Math.pow(10, (loserElo - winnerElo) / 400));
-  const expectedLoser = 1 / (1 + Math.pow(10, (winnerElo - loserElo) / 400));
-
-  const newWinnerElo = Math.round(winnerElo + K * (1 - expectedWinner));
-  const newLoserElo = Math.round(loserElo + K * (0 - expectedLoser));
-
-  return { newWinnerElo, newLoserElo };
-}
-
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const { winnerId, loserId, userId } = await req.json();
+    const { winnerId, loserId, userId } = await request.json();
 
     if (!winnerId || !loserId || !userId) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // 1. Fetch current ratings for winner and loser
-    const { data: winner } = await supabase.from('states').select('elo, wins').eq('id', winnerId).single();
-    const { data: loser } = await supabase.from('states').select('elo, losses').eq('id', loserId).single();
+    // 1. Insert vote (Triggers handle personal ratings automatically)
+    await supabase.from('votes').insert([
+      { winner_id: winnerId, loser_id: loserId, user_id: userId }
+    ]);
 
-    if (!winner || !loser) {
+    // 2. Fetch user vote count and state data in parallel
+    const [
+      { count: userVoteCount },
+      { data: states }
+    ] = await Promise.all([
+      supabase
+        .from('votes')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId),
+      supabase
+        .from('states')
+        .select('id, elo, wins, losses')
+        .in('id', [winnerId, loserId])
+    ]);
+
+    if (!states || states.length < 2) {
       return NextResponse.json({ error: 'State not found' }, { status: 404 });
     }
 
-    // 2. Calculate updated Elo ratings
-    const { newWinnerElo, newLoserElo } = getNewElos(winner.elo, loser.elo);
+    const winner = states.find((s) => s.id === winnerId)!;
+    const loser = states.find((s) => s.id === loserId)!;
 
-    // 3. Update winner state
-    await supabase
-      .from('states')
-      .update({ elo: newWinnerElo, wins: (winner.wins || 0) + 1 })
-      .eq('id', winnerId);
+    // 3. Calculate dynamic K-factor for global states using logarithmic attenuation
+    const totalVotes = userVoteCount || 1;
+    const BASE_K = 32;
+    const DECAY_ALPHA = 0.15;
+    const userK = BASE_K / (1 + DECAY_ALPHA * Math.log(1 + totalVotes));
 
-    // 4. Update loser state
-    await supabase
-      .from('states')
-      .update({ elo: newLoserElo, losses: (loser.losses || 0) + 1 })
-      .eq('id', loserId);
+    // 4. Expected scores and new global Elo ratings
+    const expectedWinner = 1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400));
+    const expectedLoser = 1 - expectedWinner;
 
-    // 5. Log the vote history entry
-    await supabase.from('votes').insert({
-      user_id: userId,
-      winner_id: winnerId,
-      loser_id: loserId,
-    });
+    const newWinnerElo = Math.round(winner.elo + userK * (1 - expectedWinner));
+    const newLoserElo = Math.round(loser.elo + userK * (0 - expectedLoser));
 
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: 'Failed to process vote' }, { status: 500 });
+    // 5. Update global states in parallel
+    await Promise.all([
+      supabase.from('states').update({ elo: newWinnerElo, wins: winner.wins + 1 }).eq('id', winnerId),
+      supabase.from('states').update({ elo: newLoserElo, losses: loser.losses + 1 }).eq('id', loserId)
+    ]);
+
+    return NextResponse.json({ success: true, userKUsed: userK });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
