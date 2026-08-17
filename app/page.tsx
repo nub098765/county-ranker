@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import PersonalRankingsDrawer from './components/PersonalRankingsDrawer';
 
@@ -20,6 +20,14 @@ type UserStats = {
   total_votes: number;
 };
 
+type StandingsItem = {
+  id: string;
+  name: string;
+  elo: number;
+  wins: number;
+  losses: number;
+};
+
 export default function Home() {
   const [pair, setPair] = useState<[State, State] | null>(null);
   const [nextPair, setNextPair] = useState<[State, State] | null>(null);
@@ -28,10 +36,11 @@ export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fullStandings, setFullStandings] = useState<StandingsItem[]>([]);
 
   const activeUserIdRef = useRef<string | null>(null);
 
-  async function fetchUserStats(userId: string) {
+  const fetchUserStats = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('user_stats')
       .select('total_votes')
@@ -43,9 +52,31 @@ export default function Home() {
     } else {
       setStats({ total_votes: 0 });
     }
-  }
+  }, []);
 
-  async function getSingleUnvotedPair(userId: string): Promise<[State, State] | null> {
+  const fetchFullStandings = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from('user_state_ratings')
+      .select('elo, wins, losses, state_id, states(id, name)')
+      .eq('user_id', userId)
+      .order('elo', { ascending: false });
+
+    if (data) {
+      const mapped = data.map((row: any) => {
+        const stateObj = Array.isArray(row.states) ? row.states[0] : row.states;
+        return {
+          id: stateObj?.id ?? row.state_id,
+          name: stateObj?.name ?? 'Unknown State',
+          elo: Math.round(row.elo ?? 1000),
+          wins: row.wins ?? 0,
+          losses: row.losses ?? 0,
+        };
+      });
+      setFullStandings(mapped);
+    }
+  }, []);
+
+  const getSingleUnvotedPair = useCallback(async (userId: string): Promise<[State, State] | null> => {
     const { data, error } = await supabase.rpc('get_unvoted_pair', {
       current_user_id: userId,
     });
@@ -57,13 +88,14 @@ export default function Home() {
       { id: row.state1_id, name: row.state1_name, image_url: row.state1_image_url, elo: row.state1_elo },
       { id: row.state2_id, name: row.state2_name, image_url: row.state2_image_url, elo: row.state2_elo },
     ];
-  }
+  }, []);
 
-  async function initPairs(userId: string) {
+  const initPairs = useCallback(async (userId: string) => {
     const first = await getSingleUnvotedPair(userId);
     if (!first) {
       setCompleted(true);
       setPair(null);
+      await fetchFullStandings(userId);
       return;
     }
     setPair(first);
@@ -72,7 +104,7 @@ export default function Home() {
     if (second) {
       setNextPair(second);
     }
-  }
+  }, [getSingleUnvotedPair, fetchFullStandings]);
 
   useEffect(() => {
     let mounted = true;
@@ -96,6 +128,7 @@ export default function Home() {
           setPair(null);
           setNextPair(null);
           setCompleted(false);
+          setFullStandings([]);
         }
       }
 
@@ -106,7 +139,7 @@ export default function Home() {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchUserStats, initPairs]);
 
   async function loginWithDiscord() {
     await supabase.auth.signInWithOAuth({
@@ -126,6 +159,7 @@ export default function Home() {
     setPair(null);
     setNextPair(null);
     setCompleted(false);
+    setFullStandings([]);
   }
 
   async function handleVote(winner: State, loser: State) {
@@ -161,6 +195,7 @@ export default function Home() {
         setPair((curr) => curr ?? upcomingPair);
       } else if (!nextPair) {
         setCompleted(true);
+        await fetchFullStandings(user.id);
       }
 
       await fetchUserStats(user.id);
@@ -218,14 +253,26 @@ export default function Home() {
           </div>
 
           {completed && !pair ? (
-            <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-10 max-w-lg text-center shadow-2xl my-8">
-              <h2 className="text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
-              <p className="text-slate-300 text-lg">
-                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>.
+            <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-6 sm:p-8 w-full max-w-2xl text-center shadow-2xl my-8">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
+              <p className="text-slate-300 text-base sm:text-lg mb-6">
+                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>. Here is your final order:
               </p>
-              <p className="text-slate-400 text-sm mt-4">
-                Check the <span className="text-indigo-400 font-semibold">My Rankings</span> drawer on the right to see your full Elo standings!
-              </p>
+
+              <div className="w-full bg-slate-950 border border-slate-700 rounded-xl overflow-hidden text-left max-h-96 overflow-y-auto divide-y divide-slate-800">
+                {fullStandings.map((item, idx) => (
+                  <div key={item.id} className="p-3 flex items-center justify-between text-sm hover:bg-slate-900 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-slate-400 font-semibold w-8">#{idx + 1}</span>
+                      <span className="font-medium text-slate-100">{item.name}</span>
+                    </div>
+                    <div className="text-right flex items-center gap-4">
+                      <span className="text-slate-400 text-xs">{item.wins}W - {item.losses}L</span>
+                      <span className="font-mono font-bold text-indigo-300 text-base">{item.elo}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             pair && (
