@@ -256,7 +256,7 @@ export default function Home() {
             <div className="flex flex-col items-center justify-center bg-slate-800 border-2 border-indigo-500 rounded-2xl p-6 sm:p-8 w-full max-w-2xl text-center shadow-2xl my-8">
               <h2 className="text-3xl sm:text-4xl font-extrabold text-indigo-400 mb-2">You did it!</h2>
               <p className="text-slate-300 text-base sm:text-lg mb-6">
-                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>. Here is your final order:
+                You evaluated all <span className="font-bold text-white">1,225 unique state matchups</span>. Your votes have been recorded. Here's how the states stacked up in your personal rankings:
               </p>
 
               <div className="w-full bg-slate-950 border border-slate-700 rounded-xl overflow-hidden text-left max-h-96 overflow-y-auto divide-y divide-slate-800">
