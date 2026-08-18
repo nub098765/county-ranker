@@ -51,8 +51,8 @@ export async function POST(request: Request) {
     const expectedWinner = 1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400));
     const expectedLoser = 1 - expectedWinner;
 
-    const newWinnerElo = Math.round(winner.elo + userK * (1 - expectedWinner));
-    const newLoserElo = Math.round(loser.elo + userK * (0 - expectedLoser));
+    const newWinnerElo = Number(winner.elo + userK * (1 - expectedWinner));
+    const newLoserElo = Number(loser.elo + userK * (0 - expectedLoser));
 
     // 5. Update global states in parallel
     await Promise.all([
