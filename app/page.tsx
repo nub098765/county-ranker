@@ -67,7 +67,7 @@ export default function Home() {
         return {
           id: stateObj?.id ?? row.state_id,
           name: stateObj?.name ?? 'Unknown State',
-          elo: Math.round(row.elo ?? 1000),
+          elo: Number(row.elo ?? 1000),
           wins: row.wins ?? 0,
           losses: row.losses ?? 0,
         };

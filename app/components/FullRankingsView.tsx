@@ -8,203 +8,106 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-interface StateRating {
+interface StandingItem {
+  id: string;
+  name: string;
   elo: number;
   wins: number;
   losses: number;
-  states: {
-    id: string;
-    name: string;
-  };
 }
 
-export default function PersonalRankingsDrawer() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [rankings, setRankings] = useState<StateRating[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchRankings = async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('user_state_ratings')
-      .select('elo, wins, losses, state_id, states(id, name)')
-      .eq('user_id', user.id)
-      .order('elo', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching rankings:', error);
-    } else if (data) {
-      const mapped = data.map((row: any) => {
-        const stateObj = Array.isArray(row.states) ? row.states[0] : row.states;
-        return {
-          elo: Math.round(row.elo ?? 1000),
-          wins: row.wins ?? 0,
-          losses: row.losses ?? 0,
-          states: {
-            id: stateObj?.id ?? row.state_id ?? `state-${Math.random()}`,
-            name: stateObj?.name ?? row.state_name ?? row.name ?? 'Unknown State',
-          },
-        };
-      });
-      setRankings(mapped);
-    }
-    setLoading(false);
-  };
+export default function FullRankingsView() {
+  const [standings, setStandings] = useState<StandingItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchRankings();
-    }
-  }, [isOpen]);
+    async function fetchStandings() {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
 
-  const top3 = rankings.slice(0, 3);
-  const bottom3 = [...rankings].reverse().slice(0, 3);
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_state_ratings')
+        .select('elo, wins, losses, state_id, states(id, name)')
+        .eq('user_id', user.id)
+        .order('elo', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching standings:', error);
+      } else if (data) {
+        const mapped = data.map((row: any) => {
+          const stateObj = Array.isArray(row.states) ? row.states[0] : row.states;
+          return {
+            id: stateObj?.id ?? row.state_id ?? `state-${Math.random()}`,
+            name: stateObj?.name ?? 'Unknown State',
+            elo: Number(row.elo ?? 1000),
+            wins: row.wins ?? 0,
+            losses: row.losses ?? 0,
+          };
+        });
+        setStandings(mapped);
+      }
+      setLoading(false);
+    }
+
+    fetchStandings();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full bg-slate-950 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
+        Loading standings...
+      </div>
+    );
+  }
+
+  if (standings.length === 0) {
+    return (
+      <div className="w-full bg-slate-950 border border-slate-700 rounded-xl p-8 text-center text-slate-400">
+        No rankings recorded yet.
+      </div>
+    );
+  }
 
   return (
-    <>
-      {/* Trigger Button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed top-1/2 right-0 -translate-y-1/2 z-40 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-4 rounded-l-xl shadow-lg transition-all duration-200 flex items-center gap-1 group cursor-pointer"
-      >
-        <span className="[writing-mode:vertical-rl] font-semibold tracking-wider text-xs uppercase rotate-180">
-          My Rankings
-        </span>
-      </button>
-
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          onClick={() => setIsOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity"
-        />
-      )}
-
-      {/* Slide-out Panel */}
-      <div
-        className={`fixed top-0 right-0 h-full w-80 sm:w-96 bg-slate-900 border-l border-slate-800 text-slate-100 shadow-2xl z-50 transition-transform duration-300 ease-in-out flex flex-col ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-          <h2 className="font-bold text-lg text-indigo-400">
-            My Rankings
-          </h2>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <span className="text-sm font-bold">✕</span>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {loading ? (
-            <div className="flex justify-center items-center h-40 text-slate-400">
-              Loading ratings...
-            </div>
-          ) : rankings.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 space-y-2">
-              <p className="font-medium">No votes recorded yet!</p>
-              <p className="text-xs text-slate-500">Vote on some matchups to build your rankings.</p>
-            </div>
-          ) : (
-            <>
-              {/* Top 3 */}
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-2">
-                  Top Favorites
-                </h3>
-                <div className="space-y-2">
-                  {top3.map((item, idx) => (
-                    <div
-                      key={item.states.id}
-                      className="bg-slate-800/80 border border-slate-700/50 rounded-lg p-3 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-slate-400 w-4">
-                          #{idx + 1}
-                        </span>
-                        <span className="font-semibold text-slate-100">
-                          {item.states.name}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-emerald-400 text-sm">
-                          {item.elo} Elo
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {item.wins}W - {item.losses}L
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Bottom 3 */}
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-2">
-                  Least Favorites
-                </h3>
-                <div className="space-y-2">
-                  {bottom3.map((item, idx) => (
-                    <div
-                      key={item.states.id}
-                      className="bg-slate-800/80 border border-slate-700/50 rounded-lg p-3 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-slate-400 w-4">
-                          #{rankings.length - idx}
-                        </span>
-                        <span className="font-semibold text-slate-100">
-                          {item.states.name}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-rose-400 text-sm">
-                          {item.elo} Elo
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          {item.wins}W - {item.losses}L
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Full Standings */}
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                  Full Standings ({rankings.length}/50 Seen)
-                </h3>
-                <div className="bg-slate-950 border border-slate-800 rounded-lg divide-y divide-slate-800/60 max-h-64 overflow-y-auto">
-                  {rankings.map((item, idx) => (
-                    <div
-                      key={item.states.id}
-                      className="px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-900/50"
-                    >
-                      <span className="text-slate-400 font-mono w-6">#{idx + 1}</span>
-                      <span className="flex-1 font-medium text-slate-200">{item.states.name}</span>
-                      <span className="font-mono text-indigo-300 font-semibold">{item.elo}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+    <div className="w-full bg-slate-950 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-96 overflow-y-auto">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-900 border-b border-slate-700 text-xs font-semibold uppercase tracking-wider text-slate-400 sticky top-0 z-10">
+              <th className="py-3 px-4 w-16">Rank</th>
+              <th className="py-3 px-4">State</th>
+              <th className="py-3 px-4 text-center">Record</th>
+              <th className="py-3 px-4 text-right">Rating</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800 text-sm">
+            {standings.map((item, idx) => (
+              <tr 
+                key={item.id} 
+                className="hover:bg-slate-900/60 transition-colors"
+              >
+                <td className="py-3 px-4 font-mono font-semibold text-slate-400">
+                  #{idx + 1}
+                </td>
+                <td className="py-3 px-4 font-medium text-slate-100">
+                  {item.name}
+                </td>
+                <td className="py-3 px-4 text-center text-slate-400 text-xs font-mono">
+                  {item.wins}W - {item.losses}L
+                </td>
+                <td className="py-3 px-4 text-right font-mono font-bold text-indigo-300">
+                  {item.elo.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-    </>
+    </div>
   );
 }
